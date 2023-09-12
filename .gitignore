@@ -2,3 +2,9 @@ build
 dist
 *.egg-info
 **/*.pyc
+dataset/
+desc/
+datasets/
+output/
+pretrain/
+result/
