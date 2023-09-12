@@ -1,14 +1,24 @@
 # coding = utf-8
+import os
+import sys
 import torch
 import MinkowskiEngine as ME
 import MinkowskiEngine.MinkowskiFunctional as MEF
+
+ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/IMFNet_exp')
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
 from model.common import get_norm
 
 from model.residual_block import get_block
 from model.Img_Encoder import ImageEncoder
+from model.Img_Decoder import ImageDecoder
+from model.Local_Fusion import local_fusion
 from model.attention_fusion import AttentionFusion
 
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 
 class ResUNet2(ME.MinkowskiNetwork):
@@ -157,28 +167,52 @@ class ResUNet2(ME.MinkowskiNetwork):
         bias=True,
         dimension=D)
 
-    # image_Encoder
+    # image
     self.img_encoder = ImageEncoder()
+    self.img_decoder = ImageDecoder()
 
-  def forward(self, x, image):
+    #fusion
+    self.fusion_conv1 = torch.nn.Conv1d(128, 64, 1)
+    self.fusion_bn1 = torch.nn.BatchNorm1d(64)
 
+    self.fusion_conv2 = torch.nn.Conv1d(192, 128, 1)
+    self.fusion_bn2 = torch.nn.BatchNorm1d(128)
+
+    self.fusion_conv3 = torch.nn.Conv1d(96, 64, 1)
+    self.fusion_bn3 = torch.nn.BatchNorm1d(64)
+    
+
+  def forward(self, x, image, image_shape, extrinsic, intrinsic):
     # I1,I2,I3,I_global = self.img_encoder(image)
-    image = self.img_encoder(image)
+    I0,I1,I2 = self.img_encoder(image)
+    image_fusion = self.img_decoder(I0,I1,I2)
 
     out_s1 = self.conv1(x)
     out_s1 = self.norm1(out_s1)
     out_s1 = self.block1(out_s1)
     out = MEF.relu(out_s1)
+    
 
     out_s2 = self.conv2(out)
     out_s2 = self.norm2(out_s2)
     out_s2 = self.block2(out_s2)
     out = MEF.relu(out_s2)
+    gather2 = local_fusion(coord=out.C, feature=out.F, image_feature=I0, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
+    fusion2 = F.relu(self.fusion_bn1(self.fusion_conv1(gather2)))
+    # print('fusion',fusion2.shape)
+    fusion2 = fusion2.reshape(-1,fusion2.shape[-1])
+    out._F = fusion2.permute(1,0)
+    # print('out.F',out._F.shape)
 
     out_s4 = self.conv3(out)
     out_s4 = self.norm3(out_s4)
     out_s4 = self.block3(out_s4)
     out = MEF.relu(out_s4)
+    gather4 = local_fusion(coord=out.C, feature=out.F, image_feature=I1, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
+    fusion4 = F.relu(self.fusion_bn2(self.fusion_conv2(gather4)))
+    fusion4 = fusion4.reshape(-1,fusion4.shape[-1])
+    # print('fusion',fusion4)
+    out._F = fusion4.permute(1,0)
 
     out_s8 = self.conv4(out)
     out_s8 = self.norm4(out_s8)
@@ -186,14 +220,13 @@ class ResUNet2(ME.MinkowskiNetwork):
     out = MEF.relu(out_s8)
 
     # fusion-attention
-    out._F = self.transformer(images=image, F=out.F,xyz = out.C)
+    out._F = self.transformer(images=I2, F=out.F,xyz = out.C)
 
     out = self.conv4_tr(out)
     out = self.norm4_tr(out)
     out = self.block4_tr(out)
     out_s4_tr = MEF.relu(out)
 
-    # 1 , attention fusion
     out = ME.cat(out_s4_tr, out_s4)
     # out._F = self.af(I1,I_global,out.F,af_flag=1)
     del out_s4_tr
@@ -204,7 +237,6 @@ class ResUNet2(ME.MinkowskiNetwork):
     out = self.block3_tr(out)
     out_s2_tr = MEF.relu(out)
 
-    # 2 , attention fusion
     out = ME.cat(out_s2_tr, out_s2)
     # out._F = self.af(I2,I_global,out.F,af_flag=2)
     del out_s2_tr
@@ -215,7 +247,7 @@ class ResUNet2(ME.MinkowskiNetwork):
     out = self.block2_tr(out)
     out_s1_tr = MEF.relu(out)
 
-    # 3 , attention fusion
+  
     out = ME.cat(out_s1_tr, out_s1)
     # out._F = self.af(I3, I_global, out.F, af_flag=3)
     del out_s1_tr
@@ -223,6 +255,12 @@ class ResUNet2(ME.MinkowskiNetwork):
 
     out = self.conv1_tr(out)
     out = MEF.relu(out)
+    # print('final',out.F.shape)
+    gather_final = local_fusion(coord=out.C, feature=out.F, image_feature=image_fusion, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
+    fusion_final = F.relu(self.fusion_bn3(self.fusion_conv3(gather_final)))
+    fusion_final = fusion_final.reshape(-1,fusion_final.shape[-1])
+    out._F = fusion_final.permute(1,0)
+
     out = self.final(out)
 
     if self.normalize_feature:

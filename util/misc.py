@@ -26,7 +26,10 @@ def extract_features(model,
                      device=None,
                      skip_check=False,
                      is_eval=True,
-                     image=None
+                     image=None,
+                     image_shape=None,
+                     extrinsic=None,
+                     intrinsic=None
                      ):
   '''
   xyz is a N x 3 matrix
@@ -92,12 +95,16 @@ def extract_features(model,
   coords = torch.tensor(coords, dtype=torch.int32)
 
 
+
   stensor = ME.SparseTensor(feats, coordinates=coords, device=device)
 
   image = torch.as_tensor(image,dtype=torch.float32,device=device)
+  image_shape = torch.as_tensor(image_shape,dtype=torch.float32,device=device)
+  extrinsic = torch.as_tensor(extrinsic,dtype=torch.float32,device=device)
+  intrinsic = torch.as_tensor(intrinsic,dtype=torch.float32,device=device)
 
   # start = time.time()
-  F = model(stensor,image).F
+  F = model(stensor,image,image_shape,extrinsic,intrinsic).F
   # end = time.time()
   # t = end - start
 

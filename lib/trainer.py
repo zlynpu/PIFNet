@@ -48,7 +48,7 @@ class AlignmentTrainer:
 
     if config.weights:
       checkpoint = torch.load(config.weights)
-      model.load_state_dict(checkpoint['state_dict'])
+      model.load_state_dict(checkpoint['state_dict'],strict=False)
 
     logging.info(model)
 
@@ -104,15 +104,15 @@ class AlignmentTrainer:
       if osp.isfile(config.resume):
         logging.info("=> loading checkpoint '{}'".format(config.resume))
         state = torch.load(config.resume)
-        self.start_epoch = state['epoch']
-        model.load_state_dict(state['state_dict'])
-        self.scheduler.load_state_dict(state['scheduler'])
-        self.optimizer.load_state_dict(state['optimizer'])
+        self.start_epoch = 1
+        model.load_state_dict(state['state_dict'], strict=False)
+        # self.scheduler.load_state_dict(state['scheduler'])
+        # self.optimizer.load_state_dict(state['optimizer'], strict=False)
 
-        if 'best_val' in state.keys():
-          self.best_val = state['best_val']
-          self.best_val_epoch = state['best_val_epoch']
-          self.best_val_metric = state['best_val_metric']
+        # if 'best_val' in state.keys():
+        #   self.best_val = state['best_val']
+        #   self.best_val_epoch = state['best_val_epoch']
+        #   self.best_val_metric = 'success'
       else:
         raise ValueError(f"=> no checkpoint found at '{config.resume}'")
   # ---- train start ----
@@ -146,7 +146,7 @@ class AlignmentTrainer:
         for k, v in val_dict.items():
           self.writer.add_scalar(f'val/{k}', v, epoch)
         if(self.best_val_metric == "feat_match_ratio" or self.best_val_metric == "success"):
-          if self.best_val < val_dict[self.best_val_metric]:
+          if self.best_val <= val_dict[self.best_val_metric]:
             logging.info(
                 f'Saving the best val model with {self.best_val_metric}: {val_dict[self.best_val_metric]}'
             )
@@ -163,7 +163,7 @@ class AlignmentTrainer:
                 f'Current best val model with {self.best_val_metric}: {self.best_val} at epoch {self.best_val_epoch}'
             )
         elif(self.best_val_metric == "rre" or self.best_val_metric == "rte" ):
-          if self.best_val > val_dict[self.best_val_metric]:
+          if self.best_val >= val_dict[self.best_val_metric]:
             logging.info(
                 f'Saving the best val model with {self.best_val_metric}: {val_dict[self.best_val_metric]}'
             )
@@ -349,17 +349,21 @@ class ContrastiveLossTrainer(AlignmentTrainer):
 
       # pairs consist of (xyz1 index, xyz0 index)
       feat_timer.tic()
+
+      image_shape = input_dict['image_shape'].to(self.device)
+      extrinsic = input_dict['extrinsic'].to(self.device)
+      intrinsic = input_dict['intrinsic'].to(self.device)
       image0 = input_dict['image0'].to(self.device)
       sinput0 = ME.SparseTensor(
           input_dict['sinput0_F'].to(self.device),
           coordinates=input_dict['sinput0_C'].to(self.device))
-      F0 = self.model(sinput0,image0).F
+      F0 = self.model(sinput0,image0,image_shape,extrinsic,intrinsic).F
 
       image1 = input_dict['image1'].to(self.device)
       sinput1 = ME.SparseTensor(
           input_dict['sinput1_F'].to(self.device),
           coordinates=input_dict['sinput1_C'].to(self.device))
-      F1 = self.model(sinput1,image1).F
+      F1 = self.model(sinput1,image1,image_shape,extrinsic,intrinsic).F
       feat_timer.toc()
 
       matching_timer.tic()
@@ -514,17 +518,20 @@ class HardestContrastiveLossTrainer(ContrastiveLossTrainer):
         input_dict = data_loader_iter.next()
         data_time += data_timer.toc(average=False)
 
+        image_shape = input_dict['image_shape'].to(self.device)
+        extrinsic = input_dict['extrinsic'].to(self.device)
+        intrinsic = input_dict['intrinsic'].to(self.device)
         image0 = input_dict['image0'].to(self.device)
         sinput0 = ME.SparseTensor(
             input_dict['sinput0_F'].to(self.device),
             coordinates=input_dict['sinput0_C'].to(self.device))
-        F0 = self.model(sinput0,image0).F
+        F0 = self.model(sinput0,image0,image_shape,extrinsic,intrinsic).F
 
         image1 = input_dict['image1'].to(self.device)
         sinput1 = ME.SparseTensor(
             input_dict['sinput1_F'].to(self.device),
             coordinates=input_dict['sinput1_C'].to(self.device))
-        F1 = self.model(sinput1,image1).F
+        F1 = self.model(sinput1,image1,image_shape,extrinsic,intrinsic).F
 
         pos_pairs = input_dict['correspondences']
         pos_loss, neg_loss = self.contrastive_hardest_negative_loss(

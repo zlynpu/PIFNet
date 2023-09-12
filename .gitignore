@@ -8,3 +8,5 @@ datasets/
 output/
 pretrain/
 result/
+scripts/result_kitti/
+system/results/

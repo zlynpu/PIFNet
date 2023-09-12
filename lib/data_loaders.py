@@ -8,13 +8,21 @@ import torch.utils.data
 import numpy as np
 import glob
 import os
+import sys
 from scipy.linalg import expm, norm
 import pathlib
+
+ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/IMFNet_exp')
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
 from util.trajectory import read_trajectory
 from util.pointcloud import get_matching_indices, make_open3d_point_cloud
 import lib.transforms as t
 from util.uio import process_image
+from util.calibration import get_calib_from_file
+from util.color_map import get_fov_mask
+
 import matplotlib.image as image
 
 import MinkowskiEngine as ME
@@ -26,7 +34,7 @@ kitti_icp_cache = {}
 
 
 def collate_pair_fn(list_data):
-  xyz0, xyz1, coords0, coords1, feats0, feats1, matching_inds, trans, p_image, q_image = list(
+  xyz0, xyz1, coords0, coords1, feats0, feats1, matching_inds, trans, p_image, q_image, image_shape, extrinsic, intrinsic = list(
       zip(*list_data))
   xyz_batch0, xyz_batch1 = [], []
   matching_inds_batch, trans_batch, len_batch = [], [], []
@@ -42,7 +50,7 @@ def collate_pair_fn(list_data):
     else:
       raise ValueError(f'Can not convert to torch tensor, {x}')
 
-  p_image_batch, q_image_batch = [], []
+  p_image_batch, q_image_batch, image_shape_batch, extrinsic_batch, intrinsic_batch = [], [], [], [], []
 
   for batch_id, _ in enumerate(coords0):
     N0 = coords0[batch_id].shape[0]
@@ -64,6 +72,11 @@ def collate_pair_fn(list_data):
     # image batch
     p_image_batch.append(to_tensor(p_image[batch_id][None,:,:,:]))
     q_image_batch.append(to_tensor(q_image[batch_id][None,:,:,:]))
+    image_shape_batch.append(to_tensor(image_shape[batch_id][None,:]))
+
+    # project batch
+    extrinsic_batch.append(to_tensor(extrinsic[batch_id][None,:,:]))
+    intrinsic_batch.append(to_tensor(intrinsic[batch_id][None,:,:]))
 
   coords_batch0, feats_batch0 = ME.utils.sparse_collate(coords0, feats0)
   coords_batch1, feats_batch1 = ME.utils.sparse_collate(coords1, feats1)
@@ -75,6 +88,10 @@ def collate_pair_fn(list_data):
   matching_inds_batch = torch.cat(matching_inds_batch, 0).int()
   p_image_batch = torch.cat(p_image_batch,0).float()
   q_image_batch = torch.cat(q_image_batch,0).float()
+  image_shape_batch = torch.cat(image_shape_batch,0).float()
+  extrinsic_batch = torch.cat(extrinsic_batch,0).float()
+  intrinsic_batch = torch.cat(intrinsic_batch,0).float()
+
 
   return {
       'pcd0': xyz_batch0,
@@ -88,6 +105,9 @@ def collate_pair_fn(list_data):
       'correspondences': matching_inds_batch,
       'T_gt': trans_batch,
       'len_batch': len_batch,
+      'image_shape': image_shape_batch,
+      'extrinsic': extrinsic_batch,
+      'intrinsic': intrinsic_batch
   }
 
 
@@ -146,7 +166,7 @@ class PairDataset(torch.utils.data.Dataset):
 
 class ThreeDMatchTestDataset(PairDataset):
   DATA_FILES = {
-      'test': '../config/test_3dmatch.txt'
+      'test': '/data1/zhangliyuan/code/IMFNet_exp/config/test_kitti.txt'
   }
 
   def __init__(self,
@@ -246,6 +266,15 @@ class IndoorPairDataset(PairDataset):
     file0 = os.path.join(self.root, self.files[idx][0])
     file1 = os.path.join(self.root, self.files[idx][1])
 
+    extrinsic = np.identity(4)
+    parent = os.path.join(file0, '..', '..')
+    parent = os.path.abspath(parent)
+    camera_file = os.path.join(parent, 'camera-intrinsics.txt')
+  
+    intrinsic = np.loadtxt(camera_file, dtype=float)
+    intrinsic = np.hstack((intrinsic, np.zeros((3, 1))))
+    # print(intrinsic)
+
     image_file0 = file0.replace(".ply","_0.png")
     image_file1 = file1.replace(".ply","_0.png")
     if(not os.path.exists(image_file0)):
@@ -257,6 +286,8 @@ class IndoorPairDataset(PairDataset):
     q_pc = o3d.io.read_point_cloud(file1)
 
     p_image = image.imread(image_file0)
+    image_shape = np.asarray(p_image.shape)
+    # print(image_shape)
     if(p_image.shape[0] != self.config.image_H or p_image.shape[1] != self.config.image_W):
       p_image = process_image(image = p_image,aim_H = self.config.image_H,aim_W = self.config.image_W)
     p_image = np.transpose(p_image,axes=(2,0,1))
@@ -344,16 +375,19 @@ class IndoorPairDataset(PairDataset):
       matches,
       trans,
       p_image,
-      q_image
+      q_image,
+      image_shape,
+      extrinsic,
+      intrinsic
     )
 
 
 class KITTIPairDataset(PairDataset):
   AUGMENT = None
   DATA_FILES = {
-      'train': '../config/train_kitti.txt',
-      'val': '../config/val_kitti.txt',
-      'test': '../config/test_kitti.txt'
+      'train': '/data1/zhangliyuan/code/IMFNet_exp/config/train_kitti.txt',
+      'val': '/data1/zhangliyuan/code/IMFNet_exp/config/val_kitti.txt',
+      'test': '/data1/zhangliyuan/code/IMFNet_exp/config/test_kitti.txt'
   }
   TEST_RANDOM_ROTATION = False
   IS_ODOMETRY = True
@@ -500,15 +534,25 @@ class KITTIPairDataset(PairDataset):
   def __getitem__(self, idx):
     drive = self.files[idx][0]
     t0, t1 = self.files[idx][1], self.files[idx][2]
+
     all_odometry = self.get_video_odometry(drive, [t0, t1])
     positions = [self.odometry_to_positions(odometry) for odometry in all_odometry]
+
     fname0 = self._get_velodyne_fn(drive, t0)
     fname1 = self._get_velodyne_fn(drive, t1)
+
+    parent = os.path.join(fname0, '..', '..')
+    parent = os.path.abspath(parent)
+    camera_file = os.path.join(parent, 'calib.txt')
+    result = get_calib_from_file(camera_file)
+    extrinsic = result['Tr_velo2cam']
+    intrinsic = result['P2']
 
     image_file0 = fname0.replace(".bin", ".png")
     image_file1 = fname0.replace(".bin", ".png")
 
     p_image = image.imread(image_file0)
+    image_shape = np.asarray(p_image.shape)
     if (p_image.shape[0] != self.config.image_H or p_image.shape[1] != self.config.image_W):
       p_image = process_image(image=p_image, aim_H=self.config.image_H, aim_W=self.config.image_W)
     p_image = np.transpose(p_image, axes=(2, 0, 1))
@@ -620,6 +664,9 @@ class KITTIPairDataset(PairDataset):
       trans,
       p_image,
       q_image,
+      image_shape,
+      extrinsic,
+      intrinsic
     )
 
 
@@ -718,7 +765,7 @@ class ThreeDMatchPairDataset(IndoorPairDataset):
   OVERLAP_RATIO = 0.3
   DATA_FILES = {
       'train': './config/train_3dmatch.txt',
-      'val': './config/val_3dmatch.txt',
+      'val': './config/test_3dmatch.txt',
       'test': './config/test_3dmatch.txt'
   }
 
@@ -766,7 +813,7 @@ def make_data_loader(
       shuffle=shuffle,
       num_workers=num_threads,
       collate_fn=collate_pair_fn,
-      pin_memory=False,
+      pin_memory=True,
       drop_last=True)
 
   return loader

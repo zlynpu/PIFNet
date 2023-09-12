@@ -29,7 +29,7 @@ INLIER_THRESHES = [
     0.1,
 ]
 # INLIER_RATIO_THRESHES = (np.arange(0, 21, dtype=np.float32) * 0.2 / 20).tolist()
-INLIER_RATIO_THRESHES = [0.05,0.20]
+INLIER_RATIO_THRESHES = [0.05]
 
 VALID_SCENE_NAMES = []
 
@@ -269,8 +269,8 @@ def run_scene_matching(scene_name,                  # current scene
     # all cloud_bin_* names
     fragment_names = [fn[:-4] for fn in fragment_names]
 
-    poses = uio.read_log(osp.join(f'../benchmarks/{cfg.benchmarks}', scene_name, 'gt.log'))
-    infos = uio.read_info_file(osp.join(f'../benchmarks/{cfg.benchmarks}', scene_name, 'gt.info'))
+    poses = uio.read_log(osp.join(f'/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.log'))
+    infos = uio.read_info_file(osp.join(f'/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.info'))
 
     register_results = []
     for pose in poses:
@@ -555,11 +555,11 @@ def evaluate(cfg):
 
 def parse_args():
 
-    test_path = '/DISK/qwt/datasets/3dmatch/3DMatch_test'
+    test_path = '/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
     # out_path = "/DISK/qwt/desc/transformer/result"
-    out_path = "/DISK/qwt/desc/transformer/good_result/Lo/nocat_198/result2/IMFNet_3DLoMatch_result"
+    out_path = "/data1/zhangliyuan/code/IMFNet_exp/result/3dmatch_evaluation/exp7/3DMatch_5000"
 
-    desc_path = "/DISK/qwt/desc/transformer/desc"
+    desc_path = "/data1/zhangliyuan/code/IMFNet_exp/desc/epoch78"
     desc_type = "IMFNet"
 
     desc_roots = [
@@ -576,10 +576,10 @@ def parse_args():
     parser.add_argument('--desc_roots', nargs='+',default=desc_roots)
     parser.add_argument('--desc_types', nargs='+',default=desc_types)
     parser.add_argument('--mode', default='test')
-    parser.add_argument('--voxel_size', default=0.025, type=float, help='voxel size to preprocess point cloud')
+    parser.add_argument('--voxel_size', default=0.05, type=float, help='voxel size to preprocess point cloud')
     parser.add_argument('--num_rand_keypoints', type=int, default=5000, help='random points')
-    parser.add_argument('--keypoints',type=bool, default=True, help='wheather saving the keypoint')
-    parser.add_argument('--benchmarks', default='3DLoMatch', help='3DMatch/3DLoMatch')
+    parser.add_argument('--keypoints',type=bool, default=False, help='wheather saving the keypoint')
+    parser.add_argument('--benchmarks', default='3DMatch', help='3DMatch/3DLoMatch')
 
     return parser.parse_args()
 

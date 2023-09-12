@@ -5,7 +5,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import tqdm
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="7"
 import sys
 import numpy as np
 import argparse
@@ -14,7 +14,7 @@ import open3d as o3d
 import matplotlib.image as image
 import math
 
-ROOT_DIR = os.path.abspath('../')
+ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/PIFNet')
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
@@ -83,6 +83,13 @@ def extract_features_batch(
       pcd = o3d.io.read_point_cloud(fi)
       npz_filename = fi.split("/")[-1].replace(".ply",".npz")
 
+      extrinsic = np.identity(4)
+      parent = os.path.join(fi, '..', '..')
+      parent = os.path.abspath(parent)
+      camera_file = os.path.join(parent, 'camera-intrinsics.txt')
+      intrinsic = np.loadtxt(camera_file, dtype=float)
+      intrinsic = np.hstack((intrinsic, np.zeros((3, 1))))
+
       # read image
       image_file = fi.replace(".ply", "_0.png")
       suffix = ".png"
@@ -90,11 +97,17 @@ def extract_features_batch(
           image_file = fi.replace(".ply", "_0.jpg")
           suffix = ".jpg"
       pc_image = image.imread(image_file)
+      image_shape = np.asarray(pc_image.shape)
+
 
       if (pc_image.shape[0] != config.image_H or pc_image.shape[1] != config.image_W):
           pc_image = process_image(image=pc_image, aim_H=config.image_H, aim_W=config.image_W)
       pc_image = np.transpose(pc_image, axes=(2, 0, 1))
       pc_image = np.expand_dims(pc_image,axis=0)
+      image_shape = np.expand_dims(image_shape,axis=0)
+      intrinsic = np.expand_dims(intrinsic,axis=0)
+      extrinsic = np.expand_dims(extrinsic,axis=0)
+
 
       start_time = time.time()
       xyz_down, feature = extract_features(
@@ -105,7 +118,10 @@ def extract_features_batch(
           voxel_size=voxel_size,
           device=device,
           skip_check=True,
-          image=pc_image
+          image=pc_image,
+          image_shape=image_shape,
+          extrinsic=extrinsic,
+          intrinsic=intrinsic
       )
       end_time = time.time() - start_time
       all_time.append(end_time)
@@ -134,16 +150,16 @@ def extract_features_batch(
 
 if __name__ == '__main__':
 
-  test_path = '/DISK/qwt/datasets/3dmatch/3DMatch_test'
-  target_path = '/DISK/qwt/desc/transformer/desc'
-  checkpoint_path = '/home/qwt/code/IMFNet-main/pretrain/3DMatch/3DMatch.pth'
+  test_path = '/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
+  target_path = '/data1/zhangliyuan/code/PIFNet/desc/epoch_78_change'
+  checkpoint_path = '/data1/zhangliyuan/code/PIFNet/output/3dmatch/exp1/best_val_checkpoint_epoch_78_feat_match_ratio_1.0.pth'
 
 
   parser = argparse.ArgumentParser()
   parser.add_argument('--source', default=test_path, type=str, help='the path of 3DMatch testing')
   parser.add_argument('--target', default=target_path, type=str, help='the path of generating descriptor')
   parser.add_argument('-m', '--model', default=checkpoint_path, type=str, help='the path of checkpoints.pth')
-  parser.add_argument('--voxel_size', default=0.05, type=float, help='voxel size to preprocess point cloud')
+  parser.add_argument('--voxel_size', default=0.025, type=float, help='voxel size to preprocess point cloud')
   parser.add_argument('--extract_features', default=True, action='store_true')
   parser.add_argument('--with_cuda', default=True, action='store_true')
 

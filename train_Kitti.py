@@ -69,6 +69,7 @@ def main(config, resume=False):
 
 
 if __name__ == "__main__":
+  # os.environ["CUDA_VISIBLE_DEVICES"] = "7"
   logger = logging.getLogger()
   # config = get_config_3dmatch()
   config = get_config_kitti()
@@ -79,7 +80,7 @@ if __name__ == "__main__":
     for k in dconfig:
       if k not in ['resume_dir'] and k in resume_config:
         dconfig[k] = resume_config[k]
-    dconfig['resume'] = resume_config['out_dir'] + '/checkpoint.pth'
+    dconfig['resume'] = resume_config['resume_dir'] + '/checkpoint_epoch_62_success_0.99.pth'
 
   logging.info('===> Configurations')
   for k in dconfig:

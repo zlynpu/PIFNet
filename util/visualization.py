@@ -2,12 +2,12 @@
 A collection of unrefactored functions.
 """
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import sys
 import numpy as np
 import matplotlib.image as image
 
-ROOT_DIR = os.path.abspath('../')
+ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/IMFNet_exp')
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 from scripts.benchmark_util import run_ransac
@@ -17,6 +17,7 @@ from model import load_model
 from util.uio import process_image
 from util.pointcloud import make_open3d_point_cloud,make_open3d_feature_from_numpy
 import open3d as o3d
+from util.calibration import get_calib_from_file
 
 import torch
 import glob
@@ -95,103 +96,142 @@ def visualization_ground_truth():
         [pc1, pc2]
     )
 
-def visualization_ours(voxel_size=0.025):
+def visualization_ours(voxel_size=0.3):
 
-  # read P and Q
-  p_path = "files/cloud_bin_0.ply"
-  q_path = "files/cloud_bin_1.ply"
+     # read P and Q
+    p_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000000.bin"
+    q_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000011.bin"
+    calib_dir = '/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/00/calib.txt'
 
-  pc1 = o3d.io.read_point_cloud(p_path)
-  pc2 = o3d.io.read_point_cloud(q_path)
+    result = get_calib_from_file(calib_dir)
+    extrinsic = result['Tr_velo2cam']
+    intrinsic = result['P2']
+    extrinsic = np.expand_dims(extrinsic, axis=0)
+    intrinsic = np.expand_dims(intrinsic, axis=0)
 
-  p_xyz = np.asarray(pc1.points)
-  q_xyz = np.asarray(pc2.points)
+    # calib = get_calib_from_file(calib_dir)
+    # P2 = calib['P2']
+    # P2 = np.expand_dims(P2,axis=0)
+    # V2C = calib['Tr_velo2cam']
+    # V2C = np.expand_dims(V2C,axis=0)
 
-  # load the model
-  checkpoint_path = "../outputs/checkpoint_epoch_198_0.985.pth"
-  checkpoint = torch.load(checkpoint_path)
-  config = checkpoint['config']
+    # camera_in = np.loadtxt(calib_dir, dtype=np.float32)
+    # camera_in = np.expand_dims(camera_in,axis=0)
 
-  num_feats = 1
-  Model = load_model(config.model)
-  model = Model(
-      num_feats,
-      config.model_n_out,
-      bn_momentum=0.05,
-      normalize_feature=config.normalize_feature,
-      conv1_kernel_size=config.conv1_kernel_size,
-      D=3,
-      config=config
-  )
-  model.load_state_dict(checkpoint['state_dict'])
-  model.eval()
-  device = torch.device("cuda")
-  model = model.to(device)
+    # pc1 = o3d.io.read_point_cloud(p_path)
+    # pc2 = o3d.io.read_point_cloud(q_path)
+    p_points=np.fromfile(p_path,dtype=np.float32).reshape(-1,4)
+    q_points=np.fromfile(q_path,dtype=np.float32).reshape(-1,4)
 
-  # read p_image and q_image
-  p_image_path = "files/cloud_bin_0_0.png"
-  q_image_path = "files/cloud_bin_1_0.png"
+    p_points=p_points[:,:3]
+    q_points=q_points[:,:3]
 
-  p_image = image.imread(p_image_path)
-  if (p_image.shape[0] != config.image_H or p_image.shape[1] != config.image_W):
-      p_image = process_image(image=p_image, aim_H=config.image_H, aim_W=config.image_W)
-  p_image = np.transpose(p_image, axes=(2, 0, 1))
-  p_image = np.expand_dims(p_image, axis=0)
+    pc1=o3d.geometry.PointCloud()
+    pc2=o3d.geometry.PointCloud()
 
-  q_image = image.imread(q_image_path)
-  if (q_image.shape[0] != config.image_H or q_image.shape[1] != config.image_W):
-      q_image = process_image(image=q_image, aim_H=config.image_H, aim_W=config.image_W)
-  q_image = np.transpose(q_image, axes=(2, 0, 1))
-  q_image = np.expand_dims(q_image, axis=0)
+    pc1.points=o3d.utility.Vector3dVector(p_points) 
+    pc2.points=o3d.utility.Vector3dVector(q_points) 
 
-  # generate f_p and f_q
-  p_xyz_down, p_feature = extract_features(
-      model,
-      xyz=p_xyz,
-      rgb=None,
-      normal=None,
-      voxel_size=voxel_size,
-      device=device,
-      skip_check=True,
-      image=p_image
-  )
+    p_xyz = np.asarray(pc1.points)
+    q_xyz = np.asarray(pc2.points)
 
-  q_xyz_down, q_feature = extract_features(
-      model,
-      xyz=q_xyz,
-      rgb=None,
-      normal=None,
-      voxel_size=voxel_size,
-      device=device,
-      skip_check=True,
-      image=q_image
-  )
+    # load the model
+    checkpoint_path = "/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp6/best_val_checkpoint_epoch_91_success_0.9925.pth"
+    checkpoint = torch.load(checkpoint_path)
+    config = checkpoint['config']
 
-  # get the evaluation metrix
-  p_xyz_down = make_open3d_point_cloud(p_xyz_down)
-  q_xyz_down = make_open3d_point_cloud(q_xyz_down)
+    num_feats = 1
+    Model = load_model(config.model)
+    model = Model(
+        num_feats,
+        config.model_n_out,
+        bn_momentum=0.05,
+        normalize_feature=config.normalize_feature,
+        conv1_kernel_size=config.conv1_kernel_size,
+        D=3,
+        config=config
+    )
+    model.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+    device = torch.device("cuda")
+    model = model.to(device)
 
-  p_feature = p_feature.cpu().detach().numpy()
-  p_feature = make_open3d_feature_from_numpy(p_feature)
-  q_feature = q_feature.cpu().detach().numpy()
-  q_feature = make_open3d_feature_from_numpy(q_feature)
-  T = run_ransac(
-      p_xyz_down,
-      q_xyz_down,
-      p_feature,
-      q_feature,
-      voxel_size
-  )
+    # read p_image and q_image
+    p_image_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000000.png"
+    q_image_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000011.png"
 
-  pc1.paint_uniform_color([0.4117647058823529,0.3882352941176471,0.9254901960784314])
-  pc2.paint_uniform_color([0.9254901960784314,0.9019607843137255,0.2901960784313725])
-  o3d.visualization.draw_geometries(
-      [pc1,pc2]
-  )
-  pc1.transform(T)
-  o3d.visualization.draw_geometries(
-      [pc1,pc2]
-  )
+    p_image = image.imread(p_image_path)
+    image_shape = np.asarray(p_image.shape)
+    image_shape = np.expand_dims(image_shape,axis=0)
+    if (p_image.shape[0] != config.image_H or p_image.shape[1] != config.image_W):
+        p_image = process_image(image=p_image, aim_H=config.image_H, aim_W=config.image_W)
+    p_image = np.transpose(p_image, axes=(2, 0, 1))
+    p_image = np.expand_dims(p_image, axis=0)
+
+    q_image = image.imread(q_image_path)
+    if (q_image.shape[0] != config.image_H or q_image.shape[1] != config.image_W):
+        q_image = process_image(image=q_image, aim_H=config.image_H, aim_W=config.image_W)
+    q_image = np.transpose(q_image, axes=(2, 0, 1))
+    q_image = np.expand_dims(q_image, axis=0)
+
+    # generate f_p and f_q
+    p_xyz_down, p_feature = extract_features(
+        model,
+        xyz=p_xyz,
+        rgb=None,
+        normal=None,
+        voxel_size=voxel_size,
+        device=device,
+        skip_check=True,
+        image=p_image,
+        image_shape=image_shape,
+        extrinsic=extrinsic,
+        intrinsic=intrinsic
+    )
+
+    q_xyz_down, q_feature = extract_features(
+        model,
+        xyz=q_xyz,
+        rgb=None,
+        normal=None,
+        voxel_size=voxel_size,
+        device=device,
+        skip_check=True,
+        image=q_image,
+        image_shape=image_shape,
+        extrinsic=extrinsic,
+        intrinsic=intrinsic
+    )
+
+    # get the evaluation metrix
+    p_xyz_down = make_open3d_point_cloud(p_xyz_down)
+    q_xyz_down = make_open3d_point_cloud(q_xyz_down)
+
+    p_feature = p_feature.cpu().detach().numpy()
+    p_feature = make_open3d_feature_from_numpy(p_feature)
+    q_feature = q_feature.cpu().detach().numpy()
+    q_feature = make_open3d_feature_from_numpy(q_feature)
+    T = run_ransac(
+        p_xyz_down,
+        q_xyz_down,
+        p_feature,
+        q_feature,
+        voxel_size
+    )
+
+    pc1.paint_uniform_color([0.752941176470588,0.0,0.0])
+    pc2.paint_uniform_color([1.0,0.850980392156862,0.4])
+    # o3d.visualization.draw_geometries(
+    #     [pc1,pc2]
+    # )
+    # o3d.io.write_point_cloud("result_raw.pcd", pc1+pc2)
+
+    pc1 = pc1.transform(T)
+    # o3d.visualization.draw_geometries(
+    #     [pc1,pc2]
+    # )
+    o3d.io.write_point_cloud("result_IMF_exp_kitti.pcd", pc1+pc2)
+    print('alread save exp IMFNet!')
 
 def spinnet_desc():
 
@@ -228,7 +268,7 @@ def spinnet_desc():
             print(f"Saving : {desc_keypoiont_output_path}")
 
 from util.file import ensure_dir, get_folder_list, get_file_list
-from scripts.evluation_3dmatch_test import read_log
+from util.uio import read_log
 
 def visualization_3DMatch(voxel_size=0.025):
       # mano
@@ -639,8 +679,8 @@ def visualization_Kitti(voxel_size=0.05):
     print(SpinNet_rte_T)
 if __name__ == '__main__':
     # read_npz()
-    # visualization_ours()
+    visualization_ours()
     # visualization_ground_truth()
     # spinnet_desc()
-    visualization_3DMatch()
+    # visualization_3DMatch()
     # visualization_Kitti()

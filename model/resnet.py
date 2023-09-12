@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models.utils import load_state_dict_from_url
+from torch.hub import load_state_dict_from_url
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -193,19 +193,19 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # out = []
+        out = []
 
         x = self.conv1(x)  # /2
         x = self.bn1(x)
         I_in = self.relu(x)
-        # out.append(I_in)
+        out.append(I_in)
 
         x = self.maxpool(I_in)
 
         I0 = self.layer1(x)  # /4
-        # out.append(I0)
+        out.append(I0)
         I1 = self.layer2(I0)  # /8
-        # out.append(I1)
+        out.append(I1)
         # I2 = self.layer3(I1)  # /16
         # out.append(I2)
         # I3 = self.layer4(I2)  # /32
@@ -213,7 +213,7 @@ class ResNet(nn.Module):
         # I4 = self.avgpool(I3)  # Cx1x1
         # out.append(I4)
 
-        return I1
+        return out
 
 
 def _resnet(in_channels, arch, block, layers, pretrained, progress, **kwargs):

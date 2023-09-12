@@ -1,7 +1,7 @@
 import open3d as o3d  # prevent loading error
 import os
 import sys
-sys.path.append(os.path.abspath("../"))
+sys.path.append(os.path.abspath("/data1/zhangliyuan/code/IMFNet_exp"))
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -51,6 +51,7 @@ def main(config,checkpoint):
   model = model.to(device)
   model.eval()
 
+  rte_error = np.zeros(555)
   success_meter, rte_meter, rre_meter = AverageMeter(), AverageMeter(), AverageMeter()
   data_timer, feat_timer, reg_timer = Timer(), Timer(), Timer()
 
@@ -72,6 +73,7 @@ def main(config,checkpoint):
     xyz0, xyz1 = data_dict['pcd0'], data_dict['pcd1']
     T_gth = data_dict['T_gt']
 
+
     xyz0np, xyz1np = xyz0.numpy(), xyz1.numpy()
 
     pcd0 = make_open3d_point_cloud(xyz0np)
@@ -80,35 +82,39 @@ def main(config,checkpoint):
     with torch.no_grad():
       feat_timer.tic()
       p_image = data_dict["image0"].to(device)
+      image_shape = data_dict["image_shape"].to(device)
+      extrinsic = data_dict["extrinsic"].to(device)
+      intrinsic = data_dict["intrinsic"].to(device)
       sinput0 = ME.SparseTensor(
           data_dict['sinput0_F'].to(device), coordinates=data_dict['sinput0_C'].to(device))
-      F0 = model(sinput0,p_image).F.detach()
+      F0 = model(sinput0,p_image,image_shape,extrinsic,intrinsic).F.detach()
 
       q_image = data_dict["image1"].to(device)
       sinput1 = ME.SparseTensor(
           data_dict['sinput1_F'].to(device), coordinates=data_dict['sinput1_C'].to(device))
-      F1 = model(sinput1,q_image).F.detach()
+      F1 = model(sinput1,q_image,image_shape,extrinsic,intrinsic).F.detach()
       feat_timer.toc()
 
     feat0 = make_open3d_feature(F0, 32, F0.shape[0])
     feat1 = make_open3d_feature(F1, 32, F1.shape[0])
 
     reg_timer.tic()
-    distance_threshold = config.voxel_size * 1.0
-    # distance_threshold = 0.3
-    ransac_result = o3d.registration.registration_ransac_based_on_feature_matching(
+    # distance_threshold = config.voxel_size * 1.0
+    distance_threshold = 0.3
+    ransac_result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
         source=pcd0,
         target=pcd1,
         source_feature=feat0,
         target_feature=feat1,
         max_correspondence_distance=distance_threshold,
-        estimation_method=o3d.registration.TransformationEstimationPointToPoint(False),
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
         ransac_n=4,
         checkers=[
-            o3d.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-            o3d.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
         ],
-        criteria=o3d.registration.RANSACConvergenceCriteria(50000, 1000),
+        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(50000, 5000),
+        mutual_filter=False
     )
     T_ransac = torch.from_numpy(ransac_result.transformation.astype(np.float32))
     reg_timer.toc()
@@ -116,6 +122,7 @@ def main(config,checkpoint):
     # Translation error
     rte = np.linalg.norm(T_ransac[:3, 3] - T_gth[:3, 3])
     rre = np.arccos((np.trace(T_ransac[:3, :3].t() @ T_gth[:3, :3]) - 1) / 2)
+    rte_error[i] = rte
 
     # Check if the ransac was successful. successful if rte < 2m and rre < 5◦
     # http://openaccess.thecvf.com/content_ECCV_2018/papers/Zi_Jian_Yew_3DFeat-Net_Weakly_Supervised_ECCV_2018_paper.pdf
@@ -145,18 +152,19 @@ def main(config,checkpoint):
       f"RTE: {rte_meter.avg}, var: {rte_meter.var}," +
       f" RRE: {rre_meter.avg}, var: {rre_meter.var}, Success: {success_meter.sum} " +
       f"/ {success_meter.count} ({success_meter.avg * 100} %)")
+  np.savetxt("/data1/zhangliyuan/code/IMFNet_exp/scripts/result_kitti/error3.txt",rte_error)
 
 
 if __name__ == '__main__':
+  os.environ["CUDA_VISIBLE_DEVICES"]="7"
+  dataset_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti"
+  output_path = "/data1/zhangliyuan/code/IMFNet_exp/result/kitti_evaluation/exp6"
 
-  dataset_path = "/DISK/qwt/datasets/kitti/data_odometry_velodyne"
-  output_path = "/home/qwt/code/FCGF-ours_modify_transformer_nocat/outputs_kitti_12"
-
-  checkpoint_path = "/home/qwt/code/FCGF-ours_modify_transformer_nocat/outputs/checkpoint_epoch_122_0.9925.pth"
+  checkpoint_path = "/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp6/best_val_checkpoint_epoch_82_success_0.99.pth"
 
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('--save_dir', default=output_path, type=str)
+  parser.add_argument('--save_dir', default='/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp6', type=str)
   parser.add_argument('--test_phase', default='test', type=str)
   parser.add_argument('--test_num_thread', default=5, type=int)
   parser.add_argument('--model', default=checkpoint_path, type=str)
@@ -172,5 +180,5 @@ if __name__ == '__main__':
   config.kitti_odometry_root = args.kitti_root + '/dataset'
   config.test_num_thread = args.test_num_thread
 
-  main(config,checkpoint=cfg.model)
+  main(config,checkpoint=args.model)
 

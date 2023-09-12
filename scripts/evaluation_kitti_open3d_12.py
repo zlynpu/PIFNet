@@ -53,6 +53,7 @@ def main(config,checkpoint):
   model = model.to(device)
   model.eval()
 
+  rte_error = np.zeros(555)
   success_meter, rte_meter, rre_meter = AverageMeter(), AverageMeter(), AverageMeter()
   data_timer, feat_timer, reg_timer = Timer(), Timer(), Timer()
 
@@ -82,14 +83,17 @@ def main(config,checkpoint):
     with torch.no_grad():
       feat_timer.tic()
       p_image = data_dict["image0"].to(device)
+      image_shape = data_dict["image_shape"].to(device)
+      extrinsic = data_dict["extrinsic"].to(device)
+      intrinsic = data_dict["intrinsic"].to(device)
       sinput0 = ME.SparseTensor(
           data_dict['sinput0_F'].to(device), coordinates=data_dict['sinput0_C'].to(device))
-      F0 = model(sinput0,p_image).F.detach()
+      F0 = model(sinput0,p_image,image_shape,extrinsic,intrinsic).F.detach()
 
       q_image = data_dict["image1"].to(device)
       sinput1 = ME.SparseTensor(
           data_dict['sinput1_F'].to(device), coordinates=data_dict['sinput1_C'].to(device))
-      F1 = model(sinput1,q_image).F.detach()
+      F1 = model(sinput1,q_image,image_shape,extrinsic,intrinsic).F.detach()
       feat_timer.toc()
 
     feat0 = make_open3d_feature(F0, 32, F0.shape[0])
@@ -147,18 +151,19 @@ def main(config,checkpoint):
       f"RTE: {rte_meter.avg}, var: {rte_meter.var}," +
       f" RRE: {rre_meter.avg}, var: {rre_meter.var}, Success: {success_meter.sum} " +
       f"/ {success_meter.count} ({success_meter.avg * 100} %)")
+  np.savetxt("/data1/zhangliyuan/code/IMFNet_exp/scripts/result_kitti/error.txt",rte_error)
 
 
 if __name__ == '__main__':
 
-  dataset_path = "/DISK/qwt/datasets/kitti/data_odometry_velodyne"
-  output_path = "/home/qwt/code/IMFNet-main/pretrain/Kitti"
+  dataset_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti"
+  output_path = "/data1/zhangliyuan/code/IMFNet_exp/result/kitti_evaluation/exp4"
 
-  checkpoint_path = "/home/qwt/code/IMFNet-main/pretrain/Kitti/Kitti_new.pth"
+  checkpoint_path = "/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp2/checkpoint_epoch_62_success_0.99.pth"
 
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('--save_dir', default=output_path, type=str)
+  parser.add_argument('--save_dir', default='/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp4', type=str)
   parser.add_argument('--test_phase', default='test', type=str)
   parser.add_argument('--test_num_thread', default=5, type=int)
   parser.add_argument('--model', default=checkpoint_path, type=str)
