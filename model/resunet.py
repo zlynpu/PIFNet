@@ -14,11 +14,12 @@ from model.common import get_norm
 from model.residual_block import get_block
 from model.Img_Encoder import ImageEncoder
 from model.Img_Decoder import ImageDecoder
-from model.Local_Fusion import local_fusion
+from model.Local_Fusion import Local_Atten_Fusion_Conv
 from model.attention_fusion import AttentionFusion
 
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.functional import grid_sample
 import math
 
 class ResUNet2(ME.MinkowskiNetwork):
@@ -47,6 +48,9 @@ class ResUNet2(ME.MinkowskiNetwork):
     CHANNELS = self.CHANNELS
     TR_CHANNELS = self.TR_CHANNELS
     IMG_CHANNELS = self.IMG_CHANNELS
+
+    FUSION_IMG_CHANNELS = [64, 64, 32]
+    FUSION_POINT_CHANNELS = [64, 128, 64]
 
     self.normalize_feature = normalize_feature
     self.conv1 = ME.MinkowskiConvolution(
@@ -171,15 +175,21 @@ class ResUNet2(ME.MinkowskiNetwork):
     self.img_encoder = ImageEncoder()
     self.img_decoder = ImageDecoder()
 
-    #fusion
-    self.fusion_conv1 = torch.nn.Conv1d(128, 64, 1)
-    self.fusion_bn1 = torch.nn.BatchNorm1d(64)
+    #local fusion
+    self.fusion_attention = nn.ModuleList()
+    for i in range(len(FUSION_IMG_CHANNELS)): 
+      self.fusion_attention.append(Local_Atten_Fusion_Conv(inplanes_I=FUSION_IMG_CHANNELS[i], 
+                                                           inplanes_P=FUSION_POINT_CHANNELS[i],
+                                                           outplanes=FUSION_POINT_CHANNELS[i]))
 
-    self.fusion_conv2 = torch.nn.Conv1d(192, 128, 1)
-    self.fusion_bn2 = torch.nn.BatchNorm1d(128)
+    # self.fusion_conv1 = torch.nn.Conv1d(128, 64, 1)
+    # self.fusion_bn1 = torch.nn.BatchNorm1d(64)
 
-    self.fusion_conv3 = torch.nn.Conv1d(96, 64, 1)
-    self.fusion_bn3 = torch.nn.BatchNorm1d(64)
+    # self.fusion_conv2 = torch.nn.Conv1d(192, 128, 1)
+    # self.fusion_bn2 = torch.nn.BatchNorm1d(128)
+
+    # self.fusion_conv3 = torch.nn.Conv1d(96, 64, 1)
+    # self.fusion_bn3 = torch.nn.BatchNorm1d(64)
     
 
   def forward(self, x, image, image_shape, extrinsic, intrinsic):
@@ -197,21 +207,20 @@ class ResUNet2(ME.MinkowskiNetwork):
     out_s2 = self.norm2(out_s2)
     out_s2 = self.block2(out_s2)
     out = MEF.relu(out_s2)
-    gather2 = local_fusion(coord=out.C, feature=out.F, image_feature=I0, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
-    fusion2 = F.relu(self.fusion_bn1(self.fusion_conv1(gather2)))
-    # print('fusion',fusion2.shape)
+    fusion2 = self.local_fusion(coord=out.C, feature=out.F, image_feature=I0, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic, id=0)
+    # (B, 64, N)
     fusion2 = fusion2.reshape(-1,fusion2.shape[-1])
+    # (64, N*B)
     out._F = fusion2.permute(1,0)
-    # print('out.F',out._F.shape)
-
+  
     out_s4 = self.conv3(out)
     out_s4 = self.norm3(out_s4)
     out_s4 = self.block3(out_s4)
     out = MEF.relu(out_s4)
-    gather4 = local_fusion(coord=out.C, feature=out.F, image_feature=I1, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
-    fusion4 = F.relu(self.fusion_bn2(self.fusion_conv2(gather4)))
+    fusion4 = self.local_fusion(coord=out.C, feature=out.F, image_feature=I1, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic, id=1)
+    # fusion4 = F.relu(self.fusion_bn2(self.fusion_conv2(gather4)))
     fusion4 = fusion4.reshape(-1,fusion4.shape[-1])
-    # print('fusion',fusion4)
+    # 
     out._F = fusion4.permute(1,0)
 
     out_s8 = self.conv4(out)
@@ -256,8 +265,8 @@ class ResUNet2(ME.MinkowskiNetwork):
     out = self.conv1_tr(out)
     out = MEF.relu(out)
     # print('final',out.F.shape)
-    gather_final = local_fusion(coord=out.C, feature=out.F, image_feature=image_fusion, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic)
-    fusion_final = F.relu(self.fusion_bn3(self.fusion_conv3(gather_final)))
+    fusion_final = self.local_fusion(coord=out.C, feature=out.F, image_feature=image_fusion, image_shape=image_shape, extrinsic=extrinsic, intrinsic=intrinsic, id=2)
+    # fusion_final = F.relu(self.fusion_bn3(self.fusion_conv3(gather_final)))
     fusion_final = fusion_final.reshape(-1,fusion_final.shape[-1])
     out._F = fusion_final.permute(1,0)
 
@@ -309,6 +318,62 @@ class ResUNet2(ME.MinkowskiNetwork):
       F = torch.cat(ps, dim=0)
 
       return F
+  
+  def local_fusion(self, coord, feature, image_feature, image_shape, extrinsic, intrinsic, id, voxel_size=0.3):
+    # batch ----- batch
+    lengths = []
+    max_batch = torch.max(coord[:, 0])
+    for i in range(max_batch + 1):
+        length = torch.sum(coord[:, 0] == i)
+        lengths.append(length)
+
+    device = torch.device('cuda')
+    fusion_feature_batch = []
+    start = 0
+    end = 0
+    batch_id = 0
+    
+    for length in lengths:
+        end += length
+        point_coord = coord[start:end, 1:] * voxel_size
+        point_feature = feature[start:end, :].unsqueeze(0)
+        point_feature = point_feature.permute(0,2,1)
+
+        point_z = point_coord[:, -1]
+        # print('pointcoord',point_coord.shape)
+        one = torch.ones((point_coord.shape[0],1)).to(device)
+        # print('one',one.shape)
+        point_in_lidar = torch.cat([point_coord, one],1).t()
+        # print('point_in_lidar',point_in_lidar.shape)
+
+        point_in_camera = extrinsic[batch_id, :, :].mm(point_in_lidar)
+        point_in_image = intrinsic[batch_id, :, :].mm(point_in_camera)/point_z
+        point_in_image = point_in_image.t()
+        point_in_image[:, -1] = point_z
+
+        point_in_image[:, 0] = point_in_image[:, 0] * 2 / image_shape[batch_id, 0] - 1
+        point_in_image[:, 1] = point_in_image[:, 1] * 2 / image_shape[batch_id, 1] - 1
+
+        point_in_image = point_in_image.unsqueeze(0)
+
+        feature_map = image_feature[batch_id, :, :, :].unsqueeze(0)
+        # print('feature_map_shape:',feature_map.shape)
+        xy = point_in_image[:, :, :-1].unsqueeze(1)
+        # print('xy:',xy.shape)
+        img_feature = grid_sample(feature_map, xy)
+        img_feature = img_feature.squeeze(2)
+        
+        fusion_feature = self.fusion_attention[id](point_features=point_feature, img_features=img_feature)
+        # fusion_feature = torch.cat([img_feature, point_feature], dim=1)
+        # print('fusion_feature:', fusion_feature.shape)
+
+        fusion_feature_batch.append(fusion_feature)
+        start += length
+        batch_id += 1
+    
+    fusion_feature_batch = torch.cat(fusion_feature_batch,2)
+    # print('fusion_feature_batch:',fusion_feature_batch.shape)
+    return fusion_feature_batch
 
 
 class ResUNetBN2(ResUNet2):

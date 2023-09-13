@@ -74,7 +74,7 @@ net_arg.add_argument('--best_val_metric', type=str, default='feat_match_ratio',h
 opt_arg = add_argument_group('Optimizer')
 opt_arg.add_argument('--optimizer', type=str, default='SGD')
 opt_arg.add_argument('--max_epoch', type=int, default=100)
-opt_arg.add_argument('--lr', type=float, default=9e-2)
+opt_arg.add_argument('--lr', type=float, default=5e-2)
 opt_arg.add_argument('--momentum', type=float, default=0.8)
 opt_arg.add_argument('--sgd_momentum', type=float, default=0.9)
 opt_arg.add_argument('--sgd_dampening', type=float, default=0.1)
@@ -106,12 +106,12 @@ output_3DMatch = "outputs"
 logging_arg.add_argument('--out_dir', type=str, default=output_3DMatch)
 
 # 3DMatch ---- |resume dir|
-misc_arg.add_argument('--resume_dir', type=str, default='/data1/zhangliyuan/code/IMFNet_exp/pretrain/pretrain/3DMatch')
+misc_arg.add_argument('--resume_dir', type=str, default='/data1/zhangliyuan/code/PIFNet/pretrain/pretrain/3DMatch')
 
 # 3DMtach ---- |num thread|
-misc_arg.add_argument('--train_num_thread', type=int, default=16)
-misc_arg.add_argument('--val_num_thread', type=int, default=16)
-misc_arg.add_argument('--test_num_thread', type=int, default=16)
+misc_arg.add_argument('--train_num_thread', type=int, default=8)
+misc_arg.add_argument('--val_num_thread', type=int, default=8)
+misc_arg.add_argument('--test_num_thread', type=int, default=8)
 
 # 3DMatch ---- |dataset|
 dataset_3DMatch = 'ThreeDMatchPairDataset'

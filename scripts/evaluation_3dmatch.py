@@ -269,8 +269,8 @@ def run_scene_matching(scene_name,                  # current scene
     # all cloud_bin_* names
     fragment_names = [fn[:-4] for fn in fragment_names]
 
-    poses = uio.read_log(osp.join(f'/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.log'))
-    infos = uio.read_info_file(osp.join(f'/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.info'))
+    poses = uio.read_log(osp.join(f'/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.log'))
+    infos = uio.read_info_file(osp.join(f'/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/benchmarks/{cfg.benchmarks}', scene_name, 'gt.info'))
 
     register_results = []
     for pose in poses:
@@ -333,7 +333,7 @@ def run_scene_matching(scene_name,                  # current scene
                 k.rte,
                 k.ir)
             )
-    return osp.join(out_folder, out_filename),len(poses)
+    return osp.join(out_folder, out_filename), len(poses)
 
 def compute_metrics(
         match_paths,
@@ -555,11 +555,11 @@ def evaluate(cfg):
 
 def parse_args():
 
-    test_path = '/data1/zhangliyuan/code/IMFNet_exp/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
+    test_path = '/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
     # out_path = "/DISK/qwt/desc/transformer/result"
-    out_path = "/data1/zhangliyuan/code/IMFNet_exp/result/3dmatch_evaluation/exp7/3DMatch_5000"
+    out_path = "/data1/zhangliyuan/code/PIFNet/result/3dmatch_evaluation/exp1_changed/3DMatch_250"
 
-    desc_path = "/data1/zhangliyuan/code/IMFNet_exp/desc/epoch78"
+    desc_path = "/data1/zhangliyuan/code/PIFNet/desc/epoch_78_change"
     desc_type = "IMFNet"
 
     desc_roots = [
@@ -576,8 +576,8 @@ def parse_args():
     parser.add_argument('--desc_roots', nargs='+',default=desc_roots)
     parser.add_argument('--desc_types', nargs='+',default=desc_types)
     parser.add_argument('--mode', default='test')
-    parser.add_argument('--voxel_size', default=0.05, type=float, help='voxel size to preprocess point cloud')
-    parser.add_argument('--num_rand_keypoints', type=int, default=5000, help='random points')
+    parser.add_argument('--voxel_size', default=0.025, type=float, help='voxel size to preprocess point cloud')
+    parser.add_argument('--num_rand_keypoints', type=int, default=250, help='random points')
     parser.add_argument('--keypoints',type=bool, default=False, help='wheather saving the keypoint')
     parser.add_argument('--benchmarks', default='3DMatch', help='3DMatch/3DLoMatch')
 

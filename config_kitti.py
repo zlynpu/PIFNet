@@ -74,7 +74,7 @@ net_arg.add_argument('--best_val_metric', type=str, default='success',help='[fea
 opt_arg = add_argument_group('Optimizer')
 opt_arg.add_argument('--optimizer', type=str, default='SGD')
 opt_arg.add_argument('--max_epoch', type=int, default=100)
-opt_arg.add_argument('--lr', type=float, default=9e-2)
+opt_arg.add_argument('--lr', type=float, default=5e-2)
 opt_arg.add_argument('--momentum', type=float, default=0.8)
 opt_arg.add_argument('--sgd_momentum', type=float, default=0.9)
 opt_arg.add_argument('--sgd_dampening', type=float, default=0.1)
@@ -101,10 +101,10 @@ data_arg = add_argument_group('Data')
 # ----------------------------------------------------------------------- #
 # Kitti  ---- |output path|
 output_kitti = "outputs_kitti"
-logging_arg.add_argument('--out_dir', type=str, default='/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp1')
+logging_arg.add_argument('--out_dir', type=str, default='/data1/zhangliyuan/code/PIFNet/output/kitti/exp1')
 
 #Kitti  ----  |resume dir|
-misc_arg.add_argument('--resume_dir', type=str, default='/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp2')
+misc_arg.add_argument('--resume_dir', type=str, default='/data1/zhangliyuan/code/PIFNet/pretrain/pretrain/Kitti')
 
 # kitti ---- |num thread|
 misc_arg.add_argument('--train_num_thread', type=int, default=16)
@@ -118,7 +118,7 @@ data_arg.add_argument('--dataset', type=str, default=dataset_Kitti)
 voxel_size_Kitti = 0.3
 data_arg.add_argument('--voxel_size', type=float, default=voxel_size_Kitti)
 # Kitti ---- |ICP|
-icp_path = "/data1/zhangliyuan/code/IMFNet_exp/datasets/Kitti/Kitti/dataset/icp"
+icp_path = "/data1/zhangliyuan/code/PIFNet/datasets/Kitti/Kitti/dataset/icp"
 opt_arg.add_argument('--icp_cache_path', type=str, default=icp_path)
 # ----------------------------------------------------------------------- #
 
@@ -132,7 +132,7 @@ data_arg.add_argument('--overlap_path', type=str, default=overlap_path)
 data_arg.add_argument('--image_W', type=str, default=160)
 data_arg.add_argument('--image_H', type=str, default=120)
 
-kitti_path = "/data1/zhangliyuan/code/IMFNet_exp/datasets/Kitti/Kitti"
+kitti_path = "/data1/zhangliyuan/code/PIFNet/datasets/Kitti/Kitti"
 data_arg.add_argument('--kitti_root', type=str, default=kitti_path)
 data_arg.add_argument(
     '--kitti_max_time_diff',

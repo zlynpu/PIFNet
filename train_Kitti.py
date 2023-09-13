@@ -80,7 +80,7 @@ if __name__ == "__main__":
     for k in dconfig:
       if k not in ['resume_dir'] and k in resume_config:
         dconfig[k] = resume_config[k]
-    dconfig['resume'] = resume_config['resume_dir'] + '/checkpoint_epoch_62_success_0.99.pth'
+    dconfig['resume'] = resume_config['resume_dir'] + '/Kitti.pth'
 
   logging.info('===> Configurations')
   for k in dconfig:
