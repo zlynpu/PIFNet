@@ -124,9 +124,9 @@ data_arg.add_argument('--voxel_size', type=float, default=voxel_size_3DMatch)
 # ----------------------------------------------------------------------- #
 
 # Dataset path
-data_path = "/data1/zhangliyuan/code/IMFNet_exp/datasets/3DImageMatch/3DImageMatch/train"
+data_path = "/data1/zhangliyuan/code/PIFNet/datasets/3DImageMatch/3DImageMatch/train"
 data_arg.add_argument('--threed_match_dir', type=str, default=data_path)
-overlap_path = "/data1/zhangliyuan/code/IMFNet_exp/datasets/3DImageMatch/3DImageMatch/overlap"
+overlap_path = "/data1/zhangliyuan/code/PIFNet/datasets/3DImageMatch/3DImageMatch/overlap"
 data_arg.add_argument('--overlap_path', type=str, default=overlap_path)
 
 # image setting

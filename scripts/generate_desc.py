@@ -151,8 +151,8 @@ def extract_features_batch(
 if __name__ == '__main__':
 
   test_path = '/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
-  target_path = '/data1/zhangliyuan/code/PIFNet/desc/epoch_78_change'
-  checkpoint_path = '/data1/zhangliyuan/code/PIFNet/output/3dmatch/exp1/best_val_checkpoint_epoch_78_feat_match_ratio_1.0.pth'
+  target_path = '/data1/zhangliyuan/code/PIFNet/desc/attent_final_1'
+  checkpoint_path = '/data1/zhangliyuan/code/PIFNet/output/3dmatch/exp_attention_final/best_val_checkpoint_epoch_1_feat_match_ratio_1.0.pth'
 
 
   parser = argparse.ArgumentParser()

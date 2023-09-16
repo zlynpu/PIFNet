@@ -34,7 +34,7 @@ kitti_icp_cache = {}
 
 
 def collate_pair_fn(list_data):
-  xyz0, xyz1, coords0, coords1, feats0, feats1, matching_inds, trans, p_image, q_image, image_shape, extrinsic, intrinsic = list(
+  xyz0, xyz1, coords0, coords1, feats0, feats1, matching_inds, trans, p_image, q_image, image_shape, extrinsic_src, extrinsic_tgt, intrinsic = list(
       zip(*list_data))
   xyz_batch0, xyz_batch1 = [], []
   matching_inds_batch, trans_batch, len_batch = [], [], []
@@ -50,7 +50,7 @@ def collate_pair_fn(list_data):
     else:
       raise ValueError(f'Can not convert to torch tensor, {x}')
 
-  p_image_batch, q_image_batch, image_shape_batch, extrinsic_batch, intrinsic_batch = [], [], [], [], []
+  p_image_batch, q_image_batch, image_shape_batch, extrinsic_src_batch, extrinsic_tgt_batch, intrinsic_batch = [], [], [], [], [], []
 
   for batch_id, _ in enumerate(coords0):
     N0 = coords0[batch_id].shape[0]
@@ -75,7 +75,8 @@ def collate_pair_fn(list_data):
     image_shape_batch.append(to_tensor(image_shape[batch_id][None,:]))
 
     # project batch
-    extrinsic_batch.append(to_tensor(extrinsic[batch_id][None,:,:]))
+    extrinsic_src_batch.append(to_tensor(extrinsic_src[batch_id][None,:,:]))
+    extrinsic_tgt_batch.append(to_tensor(extrinsic_tgt[batch_id][None,:,:]))
     intrinsic_batch.append(to_tensor(intrinsic[batch_id][None,:,:]))
 
   coords_batch0, feats_batch0 = ME.utils.sparse_collate(coords0, feats0)
@@ -89,7 +90,8 @@ def collate_pair_fn(list_data):
   p_image_batch = torch.cat(p_image_batch,0).float()
   q_image_batch = torch.cat(q_image_batch,0).float()
   image_shape_batch = torch.cat(image_shape_batch,0).float()
-  extrinsic_batch = torch.cat(extrinsic_batch,0).float()
+  extrinsic_src_batch = torch.cat(extrinsic_src_batch,0).float()
+  extrinsic_tgt_batch = torch.cat(extrinsic_tgt_batch,0).float()
   intrinsic_batch = torch.cat(intrinsic_batch,0).float()
 
 
@@ -106,7 +108,8 @@ def collate_pair_fn(list_data):
       'T_gt': trans_batch,
       'len_batch': len_batch,
       'image_shape': image_shape_batch,
-      'extrinsic': extrinsic_batch,
+      'extrinsic_src': extrinsic_src_batch,
+      'extrinsic_tgt': extrinsic_tgt_batch,
       'intrinsic': intrinsic_batch
   }
 
@@ -266,7 +269,8 @@ class IndoorPairDataset(PairDataset):
     file0 = os.path.join(self.root, self.files[idx][0])
     file1 = os.path.join(self.root, self.files[idx][1])
 
-    extrinsic = np.identity(4)
+    extrinsic_src = np.identity(4)
+    extrinsic_tgt = np.identity(4)
     parent = os.path.join(file0, '..', '..')
     parent = os.path.abspath(parent)
     camera_file = os.path.join(parent, 'camera-intrinsics.txt')
@@ -288,12 +292,12 @@ class IndoorPairDataset(PairDataset):
     p_image = image.imread(image_file0)
     image_shape = np.asarray(p_image.shape)
     # print(image_shape)
-    if(p_image.shape[0] != self.config.image_H or p_image.shape[1] != self.config.image_W):
-      p_image = process_image(image = p_image,aim_H = self.config.image_H,aim_W = self.config.image_W)
+    # if(p_image.shape[0] != self.config.image_H or p_image.shape[1] != self.config.image_W):
+    #   p_image = process_image(image = p_image,aim_H = self.config.image_H,aim_W = self.config.image_W)
     p_image = np.transpose(p_image,axes=(2,0,1))
     q_image = image.imread(image_file1)
-    if(q_image.shape[0] != self.config.image_H or q_image.shape[1] != self.config.image_W):
-      q_image = process_image(image = q_image,aim_H = self.config.image_H,aim_W = self.config.image_W)
+    # if(q_image.shape[0] != self.config.image_H or q_image.shape[1] != self.config.image_W):
+    #   q_image = process_image(image = q_image,aim_H = self.config.image_H,aim_W = self.config.image_W)
     q_image = np.transpose(q_image,axes=(2,0,1))
 
     xyz0 = np.asarray(p_pc.points)
@@ -306,6 +310,8 @@ class IndoorPairDataset(PairDataset):
       matching_search_voxel_size *= scale
       xyz0 = scale * xyz0
       xyz1 = scale * xyz1
+      extrinsic_src = extrinsic_src/scale
+      extrinsic_tgt = extrinsic_tgt/scale
 
     if self.random_rotation:
       # use a transform by ourselves
@@ -315,6 +321,8 @@ class IndoorPairDataset(PairDataset):
 
       xyz0 = self.apply_transform(xyz0, T0)
       xyz1 = self.apply_transform(xyz1, T1)
+      extrinsic_src = extrinsic_src@np.linalg.inv(T0)
+      extrinsic_tgt = extrinsic_tgt@np.linalg.inv(T1)
     else:
       trans = np.identity(4)
 
@@ -377,7 +385,8 @@ class IndoorPairDataset(PairDataset):
       p_image,
       q_image,
       image_shape,
-      extrinsic,
+      extrinsic_src,
+      extrinsic_tgt,
       intrinsic
     )
 
@@ -444,11 +453,16 @@ class KITTIPairDataset(PairDataset):
     try:
       velo2cam = self._velo2cam
     except AttributeError:
+      # R = np.array([
+      #     7.533745e-03, -9.999714e-01, -6.166020e-04, 1.480249e-02, 7.280733e-04,
+      #     -9.998902e-01, 9.998621e-01, 7.523790e-03, 1.480755e-02
+      # ]).reshape(3, 3)
+      # T = np.array([-4.069766e-03, -7.631618e-02, -2.717806e-01]).reshape(3, 1)
       R = np.array([
-          7.533745e-03, -9.999714e-01, -6.166020e-04, 1.480249e-02, 7.280733e-04,
-          -9.998902e-01, 9.998621e-01, 7.523790e-03, 1.480755e-02
-      ]).reshape(3, 3)
-      T = np.array([-4.069766e-03, -7.631618e-02, -2.717806e-01]).reshape(3, 1)
+                4.276802385584e-04, -9.999672484946e-01, -8.084491683471e-03, -7.210626507497e-03, 8.081198471645e-03,
+                -9.999413164504e-01, 9.999738645903e-01, 4.859485810390e-04, -7.206933692422e-03
+            ]).reshape(3, 3)
+      T = np.array([-1.198459927713e-02, -5.403984729748e-02, -2.921968648686e-01]).reshape(3, 1)
       velo2cam = np.hstack([R, T])
       self._velo2cam = np.vstack((velo2cam, [0, 0, 0, 1])).T
     return self._velo2cam
@@ -545,7 +559,8 @@ class KITTIPairDataset(PairDataset):
     parent = os.path.abspath(parent)
     camera_file = os.path.join(parent, 'calib.txt')
     result = get_calib_from_file(camera_file)
-    extrinsic = result['Tr_velo2cam']
+    extrinsic_src = result['Tr_velo2cam']
+    extrinsic_tgt = result['Tr_velo2cam']
     intrinsic = result['P2']
 
     image_file0 = fname0.replace(".bin", ".png")
@@ -582,7 +597,7 @@ class KITTIPairDataset(PairDataset):
         pcd0 = make_open3d_point_cloud(xyz0_t)
         pcd1 = make_open3d_point_cloud(xyz1[sel1])
         reg = o3d.pipelines.registration.registration_icp(
-            pcd0, pcd1, 0.2, np.eye(4),
+            pcd0, pcd1, 0.3, np.eye(4),
             o3d.pipelines.registration.TransformationEstimationPointToPoint(),
             o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=200))
         pcd0.transform(reg.transformation)
@@ -604,6 +619,8 @@ class KITTIPairDataset(PairDataset):
 
       xyz0 = self.apply_transform(xyz0, T0)
       xyz1 = self.apply_transform(xyz1, T1)
+      extrinsic_src = extrinsic_src@np.linalg.inv(T0)
+      extrinsic_tgt = extrinsic_tgt@np.linalg.inv(T1)
     else:
       trans = M2
 
@@ -614,6 +631,8 @@ class KITTIPairDataset(PairDataset):
       matching_search_voxel_size *= scale
       xyz0 = scale * xyz0
       xyz1 = scale * xyz1
+      extrinsic_src = extrinsic_src/scale
+      extrinsic_tgt = extrinsic_tgt/scale
 
     # Voxelization
     xyz0_th = torch.from_numpy(xyz0)
@@ -665,7 +684,8 @@ class KITTIPairDataset(PairDataset):
       p_image,
       q_image,
       image_shape,
-      extrinsic,
+      extrinsic_src,
+      extrinsic_tgt,
       intrinsic
     )
 

@@ -557,9 +557,9 @@ def parse_args():
 
     test_path = '/data1/zhangliyuan/code/PIFNet/dataset/3DImageMatch/3DImageMatch/3DMatch_test'
     # out_path = "/DISK/qwt/desc/transformer/result"
-    out_path = "/data1/zhangliyuan/code/PIFNet/result/3dmatch_evaluation/exp1_changed/3DMatch_250"
+    out_path = "/data1/zhangliyuan/code/PIFNet/result/3dmatch_evaluation/exp_attent/epoch_42/3DMatch_250"
 
-    desc_path = "/data1/zhangliyuan/code/PIFNet/desc/epoch_78_change"
+    desc_path = "/data1/zhangliyuan/code/PIFNet/desc/attent_42"
     desc_type = "IMFNet"
 
     desc_roots = [

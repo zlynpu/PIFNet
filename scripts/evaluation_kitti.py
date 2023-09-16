@@ -1,7 +1,7 @@
 import open3d as o3d  # prevent loading error
 import os
 import sys
-sys.path.append(os.path.abspath("/data1/zhangliyuan/code/IMFNet_exp"))
+sys.path.append(os.path.abspath("/data1/zhangliyuan/code/PIFNet"))
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -152,21 +152,21 @@ def main(config,checkpoint):
       f"RTE: {rte_meter.avg}, var: {rte_meter.var}," +
       f" RRE: {rre_meter.avg}, var: {rre_meter.var}, Success: {success_meter.sum} " +
       f"/ {success_meter.count} ({success_meter.avg * 100} %)")
-  np.savetxt("/data1/zhangliyuan/code/IMFNet_exp/scripts/result_kitti/error3.txt",rte_error)
+  np.savetxt("/data1/zhangliyuan/code/PIFNet/scripts/result_kitti/error_atten.txt",rte_error)
 
 
 if __name__ == '__main__':
-  os.environ["CUDA_VISIBLE_DEVICES"]="7"
-  dataset_path = "/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti"
-  output_path = "/data1/zhangliyuan/code/IMFNet_exp/result/kitti_evaluation/exp6"
+  # os.environ["CUDA_VISIBLE_DEVICES"]="7"
+  dataset_path = "/home/zhangliyuan/dataset/Kitti/Kitti"
+  output_path = "/data1/zhangliyuan/code/PIFNet/result/kitti_evaluation/exp_atten"
 
-  checkpoint_path = "/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp6/best_val_checkpoint_epoch_82_success_0.99.pth"
+  checkpoint_path = "/data1/zhangliyuan/code/PIFNet/output/kitti/exp_attention/best_val_checkpoint_epoch_87_rte_0.20114259574213064.pth"
 
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('--save_dir', default='/data1/zhangliyuan/code/IMFNet_exp/output/kitti/exp6', type=str)
+  parser.add_argument('--save_dir', default='/data1/zhangliyuan/code/PIFNet/output/kitti/exp_attention', type=str)
   parser.add_argument('--test_phase', default='test', type=str)
-  parser.add_argument('--test_num_thread', default=5, type=int)
+  parser.add_argument('--test_num_thread', default=8, type=int)
   parser.add_argument('--model', default=checkpoint_path, type=str)
 
   parser.add_argument('--kitti_root', type=str, default=dataset_path)

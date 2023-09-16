@@ -351,19 +351,20 @@ class ContrastiveLossTrainer(AlignmentTrainer):
       feat_timer.tic()
 
       image_shape = input_dict['image_shape'].to(self.device)
-      extrinsic = input_dict['extrinsic'].to(self.device)
+      extrinsic_src = input_dict['extrinsic_src'].to(self.device)
+      extrinsic_tgt = input_dict['extrinsic_tgt'].to(self.device)
       intrinsic = input_dict['intrinsic'].to(self.device)
       image0 = input_dict['image0'].to(self.device)
       sinput0 = ME.SparseTensor(
           input_dict['sinput0_F'].to(self.device),
           coordinates=input_dict['sinput0_C'].to(self.device))
-      F0 = self.model(sinput0,image0,image_shape,extrinsic,intrinsic).F
+      F0 = self.model(sinput0,image0,image_shape,extrinsic_src,intrinsic).F
 
       image1 = input_dict['image1'].to(self.device)
       sinput1 = ME.SparseTensor(
           input_dict['sinput1_F'].to(self.device),
           coordinates=input_dict['sinput1_C'].to(self.device))
-      F1 = self.model(sinput1,image1,image_shape,extrinsic,intrinsic).F
+      F1 = self.model(sinput1,image1,image_shape,extrinsic_tgt,intrinsic).F
       feat_timer.toc()
 
       matching_timer.tic()
@@ -519,19 +520,20 @@ class HardestContrastiveLossTrainer(ContrastiveLossTrainer):
         data_time += data_timer.toc(average=False)
 
         image_shape = input_dict['image_shape'].to(self.device)
-        extrinsic = input_dict['extrinsic'].to(self.device)
+        extrinsic_src = input_dict['extrinsic_src'].to(self.device)
+        extrinsic_tgt = input_dict['extrinsic_tgt'].to(self.device)
         intrinsic = input_dict['intrinsic'].to(self.device)
         image0 = input_dict['image0'].to(self.device)
         sinput0 = ME.SparseTensor(
             input_dict['sinput0_F'].to(self.device),
             coordinates=input_dict['sinput0_C'].to(self.device))
-        F0 = self.model(sinput0,image0,image_shape,extrinsic,intrinsic).F
+        F0 = self.model(sinput0,image0,image_shape,extrinsic_src,intrinsic).F
 
         image1 = input_dict['image1'].to(self.device)
         sinput1 = ME.SparseTensor(
             input_dict['sinput1_F'].to(self.device),
             coordinates=input_dict['sinput1_C'].to(self.device))
-        F1 = self.model(sinput1,image1,image_shape,extrinsic,intrinsic).F
+        F1 = self.model(sinput1,image1,image_shape,extrinsic_tgt,intrinsic).F
 
         pos_pairs = input_dict['correspondences']
         pos_loss, neg_loss = self.contrastive_hardest_negative_loss(

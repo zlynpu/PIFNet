@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
 
-ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/IMFNet_exp')
+ROOT_DIR = os.path.abspath('/data1/zhangliyuan/code/PIFNet')
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
@@ -93,7 +93,10 @@ def lidar2image(point_in_lidar, extrinsic, intrinsic):
     :return: point_in_image numpy.ndarray `N x 3` (u, v, z)
     """
     point_in_camera = lidar2camera(point_in_lidar, extrinsic)
+    print(point_in_camera)
     point_in_image = camera2image(point_in_camera, intrinsic)
+    print(point_in_image)
+    print(point_in_image.shape)
     return point_in_image
 
 
@@ -136,9 +139,9 @@ def get_point_in_image(point_in_lidar, extrinsic, intrinsic, h, w):
     return point_in_image, depth_image
 
 if __name__ == '__main__':
-    image_path = '/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/04/velodyne/000000.png'
-    bin_path = '/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/04/velodyne/000000.bin'
-    calib_path = '/data1/zhangliyuan/code/IMFNet_exp/dataset/Kitti/Kitti/dataset/sequences/04/calib.txt'
+    image_path = '/data1/zhangliyuan/code/PIFNet/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000000.png'
+    bin_path = '/data1/zhangliyuan/code/PIFNet/dataset/Kitti/Kitti/dataset/sequences/00/velodyne/000000.bin'
+    calib_path = '/data1/zhangliyuan/code/PIFNet/dataset/Kitti/Kitti/dataset/sequences/00/calib.txt'
     point_in_lidar = read_bin(bin_path)
     color_image = image.imread(image_path)
     result = get_calib_from_file(calib_path)
@@ -156,6 +159,6 @@ if __name__ == '__main__':
     color_pcd.points = o3d.utility.Vector3dVector(valid_points)
     color_pcd.colors = o3d.utility.Vector3dVector(colors)
 
-    o3d.io.write_point_cloud('/data1/zhangliyuan/code/IMFNet_exp/result/color_pcd.pcd',color_pcd)
+    o3d.io.write_point_cloud('/data1/zhangliyuan/code/PIFNet/result/color_pcd.pcd',color_pcd)
 
 
